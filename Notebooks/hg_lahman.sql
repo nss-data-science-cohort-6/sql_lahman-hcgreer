@@ -34,59 +34,45 @@
 
 -- 3 Find the average number of strikeouts per game by decade since 1920. Round the numbers you report to 2 decimal places. Do the same for home runs per game. Do you see any trends?
 
--- WITH decade AS(
+-- WITH decades AS(
 -- 	SELECT 
 -- 	generate_series(1920, 2010, 10) AS first,
 -- 	generate_series(1929, 2019, 10) AS last
--- 	FROM teams
 -- )
 -- SELECT 
--- 	first,
--- 	last,
--- 	ROUND(CAST(SUM(so) AS decimal) / (SUM(g) / 2), 2) AS so_per_game
--- FROM decade 
--- LEFT JOIN teams
--- ON yearid >= first AND
--- 	yearid <= last
--- GROUP BY 
--- 	first, 
--- 	last
--- ORDER BY first;
-
--- WITH decade AS(
--- 	SELECT 
--- 	generate_series(1920, 2010, 10) AS first,
--- 	generate_series(1929, 2019, 10) AS last
--- 	FROM teams
--- )
--- SELECT 
--- 	first,
--- 	last,
+-- 	first::text || 's' AS decade,
+-- 	ROUND(CAST(SUM(so) AS decimal) / (SUM(g) / 2), 2) AS so_per_game, 
 -- 	ROUND(CAST(SUM(hr) AS decimal) / (SUM(g) / 2), 2) AS hr_per_game
--- FROM decade 
+-- FROM decades 
 -- LEFT JOIN teams
--- ON yearid >= first AND
--- 	yearid <= last
--- GROUP BY 
--- 	first, 
--- 	last
--- ORDER BY first;
+-- ON yearid BETWEEN first AND last
+-- GROUP BY decade
+-- ORDER BY decade;
 
 -- Both increase over time.
 
 -- 4 Find the player who had the most success stealing bases in 2016, where success is measured as the percentage of stolen base attempts which are successful. (A stolen base attempt results either in a stolen base or being caught stealing.) Consider only players who attempted at least 20 stolen bases. Report the players' names, number of stolen bases, number of attempts, and stolen base percentage.
 
+-- WITH full_batting AS (
+-- 	SELECT 
+-- 		playerid,
+-- 		yearid,
+-- 		SUM(sb) AS sb,
+-- 		SUM(cs) AS cs
+-- 	FROM batting
+-- 	GROUP BY playerid, yearid
+-- )
 -- SELECT
 -- 	namefirst,
 -- 	namelast,
 -- 	sb,
 -- 	cs + sb AS num_att,
--- 	ROUND(CAST(sb AS DECIMAL) / (cs + sb) * 100, 2) AS percent_succ
--- FROM batting
+-- 	ROUND(sb::decimal / (cs + sb) * 100, 2) AS percent_succ
+-- FROM full_batting
 -- INNER JOIN people
 -- USING(playerid)
 -- WHERE yearid = 2016 AND
--- 	cs + sb > 20
+-- 	cs + sb >= 20
 -- ORDER BY percent_succ DESC
 
 -- Chris Owings had the highest percent.
@@ -94,7 +80,8 @@
 -- 5 From 1970 to 2016, what is the largest number of wins for a team that did not win the world series? What is the smallest number of wins for a team that did win the world series? Doing this will probably result in an unusually small number of wins for a world series champion; determine why this is the case. Then redo your query, excluding the problem year. How often from 1970 to 2016 was it the case that a team with the most wins also won the world series? What percentage of the time?
 
 -- (
--- 	SELECT 
+-- 	SELECT
+-- 		teamid,
 -- 		yearid,
 -- 		w,
 -- 		l,
@@ -109,6 +96,7 @@
 -- UNION
 -- (
 -- 	SELECT 
+-- 		teamid,
 -- 		yearid,
 -- 		w,
 -- 		l,
@@ -138,18 +126,19 @@
 -- 	SELECT DISTINCT *
 -- 	FROM (
 -- 		SELECT 
--- 			a1.playerid AS playerid,
--- 			a1.yearid AS yearid,
--- 			a1.lgid AS lgid
+-- 			a1.playerid,
+-- 			a1.yearid,
+-- 			a1.awardid,
+-- 			a1.lgid
 -- 		FROM awardsmanagers AS a1
 -- 		INNER JOIN awardsmanagers AS a2
 -- 		ON a1.playerid = a2.playerid
 -- 			AND a1.lgid <> a2.lgid
--- 		WHERE a1.lgid <> 'ML' 
+-- 		WHERE a1.lgid <> 'ML'
+-- 			AND a1.awardid = 'TSN Manager of the Year'
 -- 			AND a2.lgid <> 'ML'
--- 		ORDER BY a1.playerid
+-- 			AND a2.awardid = 'TSN Manager of the Year'
 -- 	) AS sub
--- 	ORDER BY playerid, yearid
 -- )
 -- SELECT 
 -- 	namefirst,
@@ -164,3 +153,91 @@
 -- ORDER BY namelast, yearid
 
 -- 7 Which pitcher was the least efficient in 2016 in terms of salary / strikeouts? Only consider pitchers who started at least 10 games (across all teams). Note that pitchers often play for more than one team in a season, so be sure that you are counting all stats for each player.
+
+-- SELECT *, 
+-- 	ROUND((total_salary / total_so)::decimal, 2) AS salary_per_so
+-- FROM(
+-- 	SELECT playerid, SUM(salary) AS total_salary, total_so
+-- 	FROM salaries
+-- 	INNER JOIN (
+-- 		SELECT playerid, SUM(so) AS total_so
+-- 		FROM pitching
+-- 		WHERE yearid = 2016 
+-- 			AND g >= 10
+-- 		GROUP BY playerid
+-- 	) AS sub
+-- 	USING(playerid)
+-- 	WHERE yearid = 2016 
+-- 		AND playerid IN(
+-- 			SELECT DISTINCT playerid
+-- 			FROM pitching
+-- 			WHERE yearid = 2016 
+-- 				AND g >= 10
+-- 		)
+-- 	GROUP BY playerid, total_so
+-- ) AS sub_2
+-- ORDER BY salary_per_so DESC
+
+-- 8 Find all players who have had at least 3000 career hits. Report those players' names, total number of hits, and the year they were inducted into the hall of fame (If they were not inducted into the hall of fame, put a null in that column.) Note that a player being inducted into the hall of fame is indicated by a 'Y' in the inducted column of the halloffame table.
+
+-- SELECT namefirst, namelast, total_hits, sub_2.yearid
+-- FROM(
+-- 	SELECT playerid, SUM(h) AS total_hits, sub.yearid
+-- 	FROM batting
+-- 	LEFT JOIN (
+-- 		SELECT playerid, yearid, inducted
+-- 		FROM halloffame
+-- 		WHERE inducted = 'Y'
+-- 	) AS sub
+-- 	USING(playerid)
+-- 	GROUP BY playerid, sub.yearid
+-- 	HAVING SUM(h) >= 3000
+-- ) AS sub_2
+-- INNER JOIN people
+-- USING(playerid)
+
+-- 9 Find all players who had at least 1,000 hits for two different teams. Report those players' full names.
+
+-- SELECT namefirst, namelast	
+-- FROM(
+-- 	WITH hits AS(
+-- 		SELECT playerid, teamid, SUM(h) as total_hits
+-- 		FROM batting
+-- 		GROUP BY playerid, teamid
+-- 		HAVING SUM(h) >= 1000
+-- 	)
+-- 	SELECT DISTINCT h1.playerid
+-- 	FROM hits AS h1
+-- 	INNER JOIN hits AS h2
+-- 	ON h1.playerid = h2.playerid
+-- 	 AND h1.teamid <> h2.teamid
+-- ) AS sub
+-- INNER JOIN people
+-- USING(playerid)
+
+-- 10 Find all players who hit their career highest number of home runs in 2016. Consider only players who have played in the league for at least 10 years, and who hit at least one home run in 2016. Report the players' first and last names and the number of home runs they hit in 2016.
+
+-- WITH hr_per_year AS(
+-- 	SELECT playerid, yearid, SUM(hr) AS hr
+-- 	FROM batting
+-- 	GROUP BY playerid, yearid
+-- )
+-- SELECT p.namefirst, p.namelast, hr
+-- FROM(
+-- 	SELECT playerid, MAX(hr) AS max_hr
+-- 	FROM hr_per_year
+-- 	GROUP BY playerid
+-- 	HAVING MAX(hr) >= 1
+-- ) AS sub
+-- INNER JOIN hr_per_year AS hyp
+-- ON hyp.playerid = sub.playerid
+-- 	AND hyp.hr = sub.max_hr
+-- INNER JOIN people AS p
+-- ON sub.playerid = p.playerid
+-- WHERE yearid = 2016 
+-- 	AND sub.playerid IN (
+-- 		SELECT playerid
+-- 		FROM batting
+-- 		GROUP BY playerid
+-- 		HAVING COUNT(DISTINCT yearid) >= 10
+-- 	)
